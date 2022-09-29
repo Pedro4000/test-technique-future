@@ -14,7 +14,10 @@ class FetchTheIpad extends React.Component {
   }
 
   componentDidMount() {
-    fetch("http://search-api.fie.future.net.uk/widget.php?id=review&site=TRD&model_id=iPad_Air")
+    fetch("https://search-api.fie.future.net.uk/widget.php?id=review&site=TRD&model_name=iPad_Air",{
+      // mode: 'no-cors',
+      method: 'GET',
+})
       .then(res => res.json())
       .then(
         (data) => {
@@ -43,16 +46,28 @@ class FetchTheIpad extends React.Component {
     } else if (!isLoaded) {
       return <div>Loading...</div>;
     } else {
-      console.log(data.widget.data.offers)
+      console.log(data)
 
       return (
-        <ul>
-          <p>liste des offres</p>
-            {data.widget.data.offers.map(offer => (
-              <li key={offer.id}>
-              </li>
-            ))}
-        </ul>
+        <table>
+            <tr>
+              <td></td>
+              <td>dealer</td>
+              <td>name</td>
+              <td>price</td>
+              <td>link</td>
+            </tr>
+              {data.widget.data.offers.map(offer => (
+                <tr>
+                  <td><img src={offer.merchant.logo_url}></img></td>
+                  <td>{offer.merchant.name}</td>
+                  <td>{offer.model}</td>
+                  <td>{offer.offer.price} {offer.offer.currency_iso.toLowerCase()}</td>
+                  <td class="offer-link"><a href={offer.offer.link}>lien vers l'offre</a></td>
+
+                </tr>
+              ))}
+        </table>
       );
       
     }
