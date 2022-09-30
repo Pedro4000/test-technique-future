@@ -11,6 +11,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\Validator\Constraints\DateTime;
 
 #[AsCommand(
     name: 'app:parser',
@@ -40,6 +41,12 @@ class ParserCommand extends Command
         'has_downloaded_free_product_status',
         'has_downloaded_iap_product_status',
     ];
+
+    public function __construct(array $untrackedTags = []) {
+        $this->untrackedTags = $untrackedTags;
+
+        parent::__construct();
+    }
     
     protected function configure(): void
     {
@@ -71,7 +78,70 @@ class ParserCommand extends Command
         
     }
 
-    function convertMemory($size)
+    private function getFormattedTags(string $tags) {
+
+        $tag_translator = self::TAG_TRANSLATORS;
+        $formattedTags = [
+            'subcription_status' => '',
+            'has_downloaded_free_product_status' => '',
+            'has_downloaded_iap_product_status' => '',
+        ];
+
+        // we reorganise the tags
+        if ($tags) {
+            
+            $tags = explode('|', $tags);
+            foreach ($tags as $tag) {
+                // if unknown tag then write it in log
+                if (!array_key_exists($tag, $tag_translator)) {
+                    if (!array_key_exists($tag, $this->untrackedTags)) {
+                        $this->untrackedTags[$tag] = 1;
+                    } else {
+                        $this->untrackedTags[$tag]++;
+                    }
+                } else {
+                    // not_downloaded_free_product is in two categories even if never found in the data provided
+                    if ($tag == 'not_downloaded_free_product') {
+                        $formattedTags = [
+                            'subcription_status' => '',
+                            'has_downloaded_free_product_status' => 'not_downloaded_free_product',
+                            'has_downloaded_iap_product_status' => 'not_downloaded_free_product',
+                        ];
+                    }
+                    $formattedTags[$tag_translator[$tag]] = $tag;
+                }
+            }
+        }
+
+        return $formattedTags;
+    }
+
+    private function checkDataTypes($line, $appCodesArray) 
+    {
+        $appCodesColumn = 0;
+        $deviceTokenColumn = 1;
+        $tokensStatusColumn = 2;
+        $tagColumn = 3;
+
+        if (empty($line)) {
+            return 0;
+        } else {
+            if (  !is_string($line[$appCodesColumn])
+               || !array_key_exists($line[$appCodesColumn], $appCodesArray)
+               || !is_string($line[$deviceTokenColumn])
+               || ! (is_bool(intval($line[$tokensStatusColumn])) || in_array(intval($line[$tokensStatusColumn]), [0,1]))
+               || !is_string($line[$tokensStatusColumn])) {
+
+               return 0;               
+            } else {
+                return 1;
+            }
+        }
+
+    }
+    
+
+    private function convertMemory(int $size)
     {
         $unit=array('b','kb','mb','gb','tb','pb');
         return @round($size/pow(1024,($i=floor(log($size,1024)))),2).' '.$unit[$i];
@@ -82,6 +152,7 @@ class ParserCommand extends Command
         $filesystem = new Filesystem();
         $finder = new Finder();
         $filesystem->remove($finder->files()->in('public/Formatted/'));
+        $execStart = new \DateTime('now');
 
         $columns = self::COLUMNS;
         $tag_translator = self::TAG_TRANSLATORS;
@@ -91,9 +162,7 @@ class ParserCommand extends Command
         $deviceTokenColumn = 1;
         $tokensStatusColumn = 2;
         $tagColumn = 3;
-        
-        $untrackedTags = [];
-        
+                
         //$contents = $file->getContents();
         $appCodesArray = self::appCodesFilesToArray();
 
@@ -113,49 +182,25 @@ class ParserCommand extends Command
             array_shift($fileAsArray);
 
             $parsedArray[] = $columns;
+            $appCodesArray = self::appCodesFilesToArray();
 
             foreach ($fileAsArray as $key => $line) {
 
-                $tagsFormatted = [
-                    'subcription_status' => '',
-                    'has_downloaded_free_product_status' => '',
-                    'has_downloaded_iap_product_status' => '',
-                ];
-
-                // we reorganise the tags
-                if ($line[$tagColumn]) {
-                    
-                    $tags = explode('|', $line[$tagColumn]);
-                    foreach ($tags as $tag) {
-                        // if unknown tag then write it in log
-                        if (!array_key_exists($tag, $tag_translator)) {
-                            if (!array_key_exists($tag, $untrackedTags)) {
-                                $untrackedTags[$tag] = 1;
-                            } else {
-                                $untrackedTags[$tag]++;
-                            }
-                        } else {
-                            if ($tag == 'not_downloaded_free_product') {
-                                $tagsFormatted = [
-                                    'subcription_status' => '',
-                                    'has_downloaded_free_product_status' => 'not_downloaded_free_product',
-                                    'has_downloaded_iap_product_status' => 'not_downloaded_free_product',
-                                ];
-                            }
-                            $tagsFormatted[$tag_translator[$tag]] = $tag;
-                        }
-                    }
-                }
+                $formattedTags = self::getFormattedTags($line[$tagColumn]);
 
                 
+                if(!self::checkDataTypes($line, $appCodesArray)) {
+                    continue;
+                };
+            
                 $parsedArray[] = [
                     $id,
                     $appCodesArray[$line[$appCodesColumn]],
                     $line[$deviceTokenColumn],
                     $line[$tokensStatusColumn],
-                    $tagsFormatted['subcription_status'],
-                    $tagsFormatted['has_downloaded_free_product_status'],
-                    $tagsFormatted['has_downloaded_iap_product_status'],
+                    $formattedTags['subcription_status'],
+                    $formattedTags['has_downloaded_free_product_status'],
+                    $formattedTags['has_downloaded_iap_product_status'],
                 ];
 
                 
@@ -176,12 +221,16 @@ class ParserCommand extends Command
 
         $io = new SymfonyStyle($input, $output);
         // we echo the ignored tags
-        foreach  ($untrackedTags as $key => $value) {
+        foreach  ($this->untrackedTags as $key => $value) {
             
             $io->note('ignored tag :' .$key.' '.$value.' occurences');
         }
     
+        $execEnd = new \DateTime('now');
+        $scriptDuration = $execStart->diff($execEnd);
+        $scriptDuration = $scriptDuration->s.'s '.$scriptDuration->f.'ms';
         $io->note('used memory :' .$usedMemory);
+        $io->note('time duration :' .$scriptDuration);
 
         $io->success('The data was well parsed');
 
