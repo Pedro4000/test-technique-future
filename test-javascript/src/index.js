@@ -1,5 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './bootstrap-utilities.css';
+import './bootstrap.min.css';
 import './index.css';
 
 
@@ -49,22 +51,21 @@ class FetchTheIpad extends React.Component {
       console.log(data)
 
       return (
-        <table>
+        <table class="table">
             <tr>
-              <td></td>
-              <td>dealer</td>
-              <td>name</td>
-              <td>price</td>
-              <td>link</td>
+              <th scope="col"></th>
+              <th scope="col">Dealer</th>
+              <th scope="col">Name</th>
+              <th scope="col">Price</th>
+              <th scope="col">Link</th>
             </tr>
               {data.widget.data.offers.map(offer => (
                 <tr>
-                  <td><img src={offer.merchant.logo_url}></img></td>
+                  <td><img src={offer.merchant.logo_url} alt='#'></img></td>
                   <td>{offer.merchant.name}</td>
                   <td>{offer.model}</td>
                   <td>{offer.offer.price} {offer.offer.currency_iso.toLowerCase()}</td>
                   <td class="offer-link"><a href={offer.offer.link}>lien vers l'offre</a></td>
-
                 </tr>
               ))}
         </table>

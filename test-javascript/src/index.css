@@ -14,5 +14,13 @@ body {
 
 table{
   width: 60%;
+  border: 1px solid lightgray;
 }
 
+tr{
+  border: 1px solid lightgray;
+}
+
+tr:hover{
+  background-color: #eaeaea;
+}
